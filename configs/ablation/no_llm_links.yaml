@@ -1,0 +1,20 @@
+# Ablation: Without LLM-Augmented Links  (−LLMLinks)
+name: no_llm_links
+description: MENTIONS and EVIDENCE_FOR edges extracted by the MedGemma-4B
+             module are excluded from the KG. Only structured-source edges
+             (DRUG_CAUSES_AE, HAS_TARGET, ASSOCIATED_WITH) are retained.
+             Edge features and ontology normalisation remain active.
+
+inherits: configs/model.yaml
+
+ablation:
+  edge_features: true
+  llm_augmented_links: false  # remove MENTIONS + EVIDENCE_FOR relation types
+  ontology_normalisation: true
+
+# Relation types active in this ablation
+active_relations:
+  - DRUG_CAUSES_AE
+  - HAS_TARGET
+  - ASSOCIATED_WITH
+  # MENTIONS and EVIDENCE_FOR excluded

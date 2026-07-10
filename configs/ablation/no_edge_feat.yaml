@@ -1,0 +1,15 @@
+# Ablation: Without Edge Features  (−EdgeFeat)
+name: no_edge_feat
+description: Edge provenance attributes phi_e(x_{(u,r,v)}) are zeroed out.
+             The bilinear decoder reduces to s(d,a) = z_d^T R_causes z_a.
+             All other components (LLM links, ontology norm) remain active.
+
+inherits: configs/model.yaml
+
+ablation:
+  edge_features: false       # phi_e(x) set to zero vector; MLP not applied
+  llm_augmented_links: true
+  ontology_normalisation: true
+
+decoder:
+  edge_mlp_hidden: 0         # MLP disabled when edge_features=false
