@@ -1,0 +1,113 @@
+# Federated Learning Configuration
+#
+# Two formulations are supported:
+#   formulation_a: institution-partitioned (horizontal FL)
+#   formulation_b: relation-partitioned (multi-view / vertical FL)
+
+active_formulation: formulation_a
+
+# ─── Formulation A: Institution-Partitioned (Horizontal FL) ──────────
+formulation_a:
+  description: >
+    Each client is an institution holding a local slice of all relation
+    types. Clients train a shared-architecture R-GCN/HGT locally and
+    upload model parameters. The server performs KG merging, alignment,
+    and reliability-weighted FedAvg aggregation.
+
+  clients:
+    - id: client_hospital
+      data_source: hospital_ehr_faers
+      relation_types: all
+
+    - id: client_literature
+      data_source: biomedical_literature
+      relation_types: all
+
+    - id: client_curated
+      data_source: curated_databases
+      relation_types: all
+
+  aggregation:
+    # Reliability-weighted FedAvg
+    # beta_i = softmax(-gamma * val_loss_i) over all clients
+    method: reliability_weighted_fedavg
+    temperature_gamma: 2.0    # sharpness of reliability weighting
+    rounds: 50
+    local_epochs: 5           # local training epochs per round
+    local_lr: 2.0e-3
+
+  server:
+    kg_merging: true
+    ontology_alignment: true  # UMLS / MeSH / MedDRA
+    entity_resolution: true
+
+# ─── Formulation B: Relation-Partitioned (Multi-View / Vertical FL) ──
+formulation_b:
+  description: >
+    Each client owns the complete graph for one relation type over a
+    shared drug vocabulary. Clients train relation-specific encoders
+    locally; only drug embeddings z_d^(r) are transmitted to the fusion
+    server. The server applies cross-view attention fusion and returns
+    gradient signals via split backpropagation.
+
+  entity_alignment:
+    # D_shared = D_ADR ∩ D_Dis ∩ D_Cmp ∩ D_DDI
+    method: identifier_join   # RxNorm / DrugBank ID harmonisation
+    key: rxnorm_id
+
+  clients:
+    - id: client_adr
+      relation: Drug_ADR
+      encoder: bipartite_graphsage
+      kg_source: faers
+
+    - id: client_disease
+      relation: Drug_Disease
+      encoder: bipartite_graphsage
+      kg_source: indications
+
+    - id: client_compound
+      relation: Drug_Compound
+      encoder: bipartite_graphsage
+      kg_source: drugbank
+
+    - id: client_ddi
+      relation: Drug_Drug
+      encoder: rgcn_homogeneous
+      kg_source: ddi_database
+
+  fusion:
+    method: cross_view_attention
+    # z_d = sum_r lambda_d^(r) P_r(z_d^(r))
+    # lambda_d^(r) = softmax(q^T tanh(U_r z_d^(r)))
+    projection_dim: 256       # common fusion space dimensionality
+    missing_view_masking: true  # absent views: z=0 and logit=0 before softmax
+
+  mocha:
+    # Federated Multi-Task Learning (Smith et al., NeurIPS 2017)
+    # Joint objective with learned task-relationship matrix Omega
+    enabled: true
+    lambda_reg: 0.1           # trace-regularisation weight
+    solver: cocoa             # COCOA primal-dual (Smith et al., JMLR 2018)
+    local_iters_per_round: 10 # variable per client (tolerates heterogeneity)
+
+  split_backprop:
+    enabled: true
+    # Server computes dL/dz_d^(r) and returns to each client
+    # Client updates: theta_r -= lr * (mu_r * grad_local + grad_from_server)
+    auxiliary_loss_weight: 0.1  # mu_r: local self-supervised pretext weight
+
+  rounds: 50
+  local_epochs: 5
+
+# ─── Shared federation settings ──────────────────────────────────────
+privacy:
+  # Data-minimisation design: only de-identified, ontology-normalised
+  # KG fragments (Formulation A) or embeddings (Formulation B) cross
+  # the federation boundary. No raw patient-level records are shared.
+  secure_aggregation: false   # not a primary constraint in this work
+  differential_privacy: false
+
+communication:
+  compression: none
+  log_payloads: false

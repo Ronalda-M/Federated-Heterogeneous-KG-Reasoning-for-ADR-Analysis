@@ -1,0 +1,120 @@
+# Dataset Configuration
+
+sources:
+  faers:
+    description: FDA Adverse Event Reporting System
+    type: clinical_reporting
+    url: https://fis.fda.gov/extensions/FPD-QDE-FAERS/FPD-QDE-FAERS.html
+    entities: drugs_and_adverse_events
+    graph_type: dense
+
+  sider:
+    description: SIDER 4.1 — drug side-effect database
+    version: "4.1"
+    type: curated
+    url: http://sideeffects.embl.de
+    graph_type: dense
+
+  drugbank:
+    description: DrugBank 5.0
+    version: "5.0"
+    type: curated
+    url: https://go.drugbank.com
+    graph_type: dense_knowledge_graph
+
+  drug_ade:
+    description: Drug ADE Relation dataset (Gurulingappa et al., 2012)
+    type: annotated_corpus
+    graph_type: bipartite
+
+  biomedical_text:
+    description: Biomedical interaction dataset (Suarez-Paniagua et al., 2019)
+    type: annotated_corpus
+    graph_type: ddi
+
+  chemdner:
+    description: BioCreative IV CHEMDNER corpus — chemical NER
+    type: ner_corpus
+    entities: chemical_and_drug_names
+
+  cdr:
+    description: BioCreative V CDR corpus — chemical-disease relations
+    type: re_corpus
+    entities: [chemicals, diseases, interactions]
+
+  neonatal:
+    description: Neonatal Drug ADR Association Dataset (Ronalda & Mir, 2025)
+    doi: https://doi.org/10.17632/ppd2c7sz8j.2
+    type: domain_specific
+    note: primary evaluation dataset for neonatal pharmacovigilance
+
+  adrcecs:
+    description: ADReCS ontology database (Cai et al., 2015)
+    type: ontology
+    url: http://bioinf.xmu.edu.cn/ADReCS
+
+  offsides:
+    description: OFFSIDES off-label side-effect resource
+    type: curated
+
+# KG schema ─────────────────────────────────────────────────────────────
+kg_schema:
+  node_types:
+    Drug:
+      identifier: rxnorm_id
+      features: [medgemma_embedding, molecular_descriptors, exposure_stats]
+    AdverseEffect:
+      identifier: meddra_pt_code
+      features: [mesh_umls_embedding, frequency_stats]
+    ClinicalFactor:
+      identifier: umls_cui
+      features: [mesh_umls_embedding, frequency_stats]
+    Target:
+      identifier: uniprot_id
+      features: [sequence_embedding]
+    MedicalLiterature:
+      identifier: pmid
+      features: [medgemma_embedding]
+    BiomedicalReport:
+      identifier: faers_case_id
+      features: [structured_fields]
+
+  relation_types:
+    DRUG_CAUSES_AE:
+      src: Drug
+      dst: AdverseEffect
+      directed: true
+    HAS_TARGET:
+      src: Drug
+      dst: Target
+      directed: true
+    ASSOCIATED_WITH:
+      src: AdverseEffect
+      dst: ClinicalFactor
+      directed: false       # bidirectional
+    MENTIONS:
+      src: MedicalLiterature
+      dst: [Drug, AdverseEffect, Target, ClinicalFactor]
+      directed: true
+    EVIDENCE_FOR:
+      src: [MedicalLiterature, BiomedicalReport]
+      dst: DRUG_CAUSES_AE   # assertion-level edge
+      directed: true
+
+  edge_attributes:
+    # stored on every edge; used as phi_e(x_{(u,r,v)}) in Eq. (2)
+    - source          # originating database
+    - report_count    # cumulative report/mention count
+    - pubmed_id       # PubMed ID (where applicable)
+    - dosage          # drug dosage (where available)
+    - route           # administration route (where available)
+
+# Ontology alignment ──────────────────────────────────────────────────
+ontology:
+  drug_mapping: umls_rxnorm
+  adverse_effect_mapping: meddra_preferred_term
+  disease_mapping: mesh
+  cross_source_dedup: true    # deduplication checked across all three databases
+  quality_metrics:
+    - entity_linking_accuracy
+    - relation_f1_on_cdr
